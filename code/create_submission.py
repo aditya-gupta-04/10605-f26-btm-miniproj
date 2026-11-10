@@ -16,7 +16,7 @@ directory.
 It measures the model, then scores it:
 - parameters: every distinct tensor in the module's state_dict, at most MAX_PARAMETERS;
 - active parameters per token, estimated as the FLOPs of matrix multiplications per token divided by 2
-  (each weight a token uses costs one multiply-add); reported, not limited;
+  (each weight a token uses costs one multiply-add); reported here, while staff check the rules' limit;
 - causality: changing later tokens must not change earlier predictions;
 - the score: non-overlapping 2,048-token windows of each dev file, mean next-token cross-entropy in nats
   with bf16 autocast; the score is the mean over the four domains.
@@ -124,7 +124,7 @@ def main():
     gpu = torch.cuda.get_device_name(0) if device == "cuda" else "cpu"
     log(f"submission  {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())} | {args.directory} | {gpu} | torch {torch.__version__}")
     log(f"parameters  {parameters:,} (limit {MAX_PARAMETERS:,})")
-    log(f"active      about {active / 1e6:.1f}M parameters per token (matrix-multiply FLOPs / 2; not limited)")
+    log(f"active      about {active / 1e6:.1f}M parameters per token (matrix-multiply FLOPs / 2; limit 150M, checked by staff)")
     log(f"causal      {'yes' if is_causal else 'NO: later tokens change earlier predictions'}")
     losses = {d: file_loss(model, data.read_tokens(os.path.join(args.data, f"{d}.bin")), args.batch, device) for d in DOMAINS}
     mean = sum(losses.values()) / len(losses)

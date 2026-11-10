@@ -1,78 +1,117 @@
-10-605 Mini-project: starter code
+10-605 Mini-project: one model from four experts
 
-See the project document for the rules, deadlines and grading. This file only covers how to run the
-starter code.
+Work in groups of 2 or 3. Deadlines, grade weights, the late policy and the competition bonus are
+announced on the course site.
 
 
-SETUP (on an AWS g5.xlarge, one A10G GPU)
+THE TASK
+
+We trained a GPT-2 small model (124M parameters) partway on a general web mix: the seed. Continuing the
+seed on one domain gave four experts: math (ClimbMix cluster 01), code (11), medicine (17), and history
+and travel (03). Each is strong on its own domain and weak on the others. Continuing the seed the same
+amount on the general mix gave the generalist.
+
+Build one model with the lowest average loss over the four domains, within the rules below. The best
+single expert averages 3.33 on the dev set, while scoring each domain with its own expert would give
+2.78. How much of that gap one model can recover, and how, is the project.
+
+
+DELIVERABLES
+
+1. Proposal (10%): your group, at least 3 distinct methods, your hypotheses, and an experiment plan
+   with the A10G-hours each experiment should cost. One submission per group.
+2. Final (90%): a leaderboard submission, your code, and a report of at most 2 pages (PDF):
+   - methodology (20 pts): Which 3+ methods did you implement? Describe each briefly, including its
+     objective, constraints, and how it uses the experts and the pool.
+   - comparison (60 pts): Compare every method against the baselines. Which gave the best dev loss?
+     Which was easiest to implement? Which offered the best quality-cost tradeoff? Include a table of
+     cross entropy, perplexity, loss difference, parameters, active parameters and training
+     A10G-hours. Plot dev loss against training compute, and give paired bootstrap intervals (over dev
+     windows) for loss differences. Include ablations and unsuccessful results.
+   - reflection (10 pts): Did the results match what you expected? What did you learn about combining
+     experts? Discuss limitations, possible overfitting, and one follow-up experiment.
+Changing only a random seed, a learning rate or the training length does not make a new method.
+
+
+SETUP (AWS g5.xlarge, one A10G GPU)
 
     pip install torch numpy huggingface_hub
     git clone https://github.com/aditya-gupta-04/10605-f26-btm-miniproj.git
     cd 10605-f26-btm-miniproj
     python3 code/download_data.py
 
-download_data.py fetches the six models (models/) and the training pool (pool/) from Hugging Face,
-about 2 GB, and checks every file against MANIFEST.sha256. Run long jobs inside tmux so they survive
-an SSH disconnect.
+download_data.py fetches models/ and pool/ from Hugging Face (about 2 GB) and checks every file
+against MANIFEST.sha256. Run long jobs inside tmux so they survive an SSH disconnect.
 
-
-WHAT IS HERE
-
-    models/seed.bin              the shared starting point: GPT-2 small, 124M parameters
-    models/generalist.bin        the seed, trained further on the general mix
-    models/expert_<domain>.bin   the seed, trained further on one domain (math, code, medicine, history)
-    pool/<domain>.bin            training data: 60M tokens per domain
+    models/seed.bin, models/generalist.bin, models/expert_<domain>.bin   the six provided models
+    pool/<domain>.bin            training data: 60M tokens per domain, never seen by the experts
     dev/<domain>.bin             dev set: about 1M tokens per domain
     code/gpt.py                  the models' architecture: load, run and save the provided checkpoints
     code/data.py                 read the token files (GPT-2 token ids)
     code/create_submission.py    check a solution, score it on the dev set, write submission.log
-    code/download_data.py        fetch models/ and pool/
     solutions/                   two placeholder solutions to copy and change
 
 
-RUN THE PLACEHOLDERS
+STARTER CODE
 
-    python3 solutions/average_experts.py --out runs/average
-        No training: the four experts' weights, averaged. Takes under a minute.
+    python3 solutions/average_experts.py --out runs/average   # no training: the experts averaged
+    python3 solutions/short_training.py --out runs/short      # the generalist plus one extra layer,
+                                                              #   200 steps on an equal mix of the pools
+    python3 code/create_submission.py runs/short              # check, score on dev, write submission.log
 
-    python3 solutions/short_training.py --out runs/short
-        The generalist plus one extra layer, trained for 200 steps on an equal mix of the four pools.
-        Takes about 6 minutes. Options: --steps, --batch-size, --micro-batch, --lr, --warmup
-        (see --help).
+short_training.py is the place to start your own training script. It is split into labeled sections
+(settings, model and weight loading, data, optimizer, train loop, saving), and --steps, --batch-size,
+--micro-batch, --lr and --warmup are plain arguments.
 
-    python3 code/create_submission.py runs/short
-        Checks the model, scores it on the dev set and writes runs/short/submission.log.
+A solution writes an output directory containing:
 
-Each placeholder writes an output directory with its weights, model_def.py and train.log.
-
-
-YOUR OWN SOLUTION
-
-Your training script writes an output directory containing:
-
-    model_def.py   defines load_model(directory, device), which returns a torch.nn.Module that maps
-                   token ids [batch, length] (int64) to logits [batch, length, 50257]
+    model_def.py   defines load_model(directory, device), returning a torch.nn.Module that maps token
+                   ids [batch, length] (int64) to logits [batch, length, 50257]
     your weights   in any format
     train.log      your training log, in any format
 
-Any architecture is allowed. Put its class in model_def.py, or in files next to it, so that
-load_model can rebuild the model. The two placeholders show both cases:
-
-    solutions/gpt_model_def.py           the provided architecture: load_model is one line
-    solutions/extra_layer_model_def.py   a changed architecture: the class, plus load_model
-
-A good way to start is to copy solutions/short_training.py and change what you need. It is split into
-labeled sections: settings, model and weight loading, data, optimizer, train loop, saving.
-
-Two things to keep from the starter code when you work with the provided models:
-  - save in the provided format with gpt.save or gpt.write_checkpoint, which keep the models' muP
-    settings (a checkpoint saved without them scores about 9);
-  - train with gpt.optimizer_groups, which sets the per-group learning rates these models need.
+Any architecture is allowed: put its class in model_def.py (or in files next to it) so load_model can
+rebuild it. solutions/gpt_model_def.py loads the provided architecture, and
+solutions/extra_layer_model_def.py shows a changed one. When saving in the provided format, use gpt.save
+or gpt.write_checkpoint (they keep the models' muP settings). Train with gpt.optimizer_groups (the
+per-group learning rates).
 
 
-SUBMITTING
+RULES
+
+1. Data: train only on pool/, in any mix or order, plus text the provided models generate inside your
+   final recipe. No other data: no other ClimbMix data, no dev tokens, no outside text.
+2. Models: only the provided ones, used in any way. No other pretrained models or model APIs.
+3. Your model: any architecture, at most 300M total parameters and at most 150M active parameters per
+   token, causal (each prediction depends only on earlier tokens). create_submission.py checks the
+   total and causality, and reports an estimate of active parameters (about 124M for the provided
+   models); staff check the 150M limit for the top groups.
+4. Compute: your final recipe is one script from the provided files to your output directory. It must
+   finish in 2 hours on a fresh g5.xlarge, everything included. Earlier experiments may enter it only
+   as settings written into it (at most 1 MB), not as weights, cached model outputs or generated data.
+5. Dev set: use it to compare and choose, never to train.
+6. Code: Python and PyTorch; torch.compile and custom kernels are fine.
+
+
+EVALUATION AND SUBMITTING
+
+Score: the mean next-token cross-entropy (nats, bf16) over non-overlapping 2,048-token windows of each
+domain, averaged over the four domains. Lower is better.
 
     python3 code/create_submission.py <output directory>
 
-Then upload <output directory>/submission.log, your train.log and your code to Gradescope, as the
-project document describes.
+Upload <output directory>/submission.log, your train.log and your code (final recipe and model_def.py)
+to Gradescope. The leaderboard shows the dev score from submission.log.
+
+Final ranking: after the deadline, staff re-run the final recipes of the top 3 groups on a fresh
+g5.xlarge with only the provided files and no network, and score the results on a hidden test set of
+never-released ClimbMix text (about 1M tokens per domain). A group drops out if its recipe takes longer
+than 2 hours, breaks a rule (including the 150M active-parameter limit), or gives a dev score more than
+0.005 away from the reported one, and the next group is re-run in its place. Run-to-run noise is about
+0.001, so fix your random seeds.
+
+Baselines (dev score):
+
+    best single expert (math)                                   3.331
+    average of the four experts (average_experts.py)            3.516
+    generalist                                                  3.156
