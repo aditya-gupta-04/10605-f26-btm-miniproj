@@ -1,1 +1,78 @@
-See the project document for instructions.
+10-605 Mini-project: starter code
+
+See the project document for the rules, deadlines and grading. This file only covers how to run the
+starter code.
+
+
+SETUP (on an AWS g5.xlarge, one A10G GPU)
+
+    pip install torch numpy huggingface_hub
+    git clone https://github.com/aditya-gupta-04/10605-f26-btm-miniproj.git
+    cd 10605-f26-btm-miniproj
+    python3 code/download_data.py
+
+download_data.py fetches the six models (models/) and the training pool (pool/) from Hugging Face,
+about 2 GB, and checks every file against MANIFEST.sha256. Run long jobs inside tmux so they survive
+an SSH disconnect.
+
+
+WHAT IS HERE
+
+    models/seed.bin              the shared starting point: GPT-2 small, 124M parameters
+    models/generalist.bin        the seed, trained further on the general mix
+    models/expert_<domain>.bin   the seed, trained further on one domain (math, code, medicine, history)
+    pool/<domain>.bin            training data: 60M tokens per domain
+    dev/<domain>.bin             dev set: about 1M tokens per domain
+    code/gpt.py                  the models' architecture: load, run and save the provided checkpoints
+    code/data.py                 read the token files (GPT-2 token ids)
+    code/create_submission.py    check a solution, score it on the dev set, write submission.log
+    code/download_data.py        fetch models/ and pool/
+    solutions/                   two placeholder solutions to copy and change
+
+
+RUN THE PLACEHOLDERS
+
+    python3 solutions/average_experts.py --out runs/average
+        No training: the four experts' weights, averaged. Takes under a minute.
+
+    python3 solutions/short_training.py --out runs/short
+        The generalist plus one extra layer, trained for 200 steps on an equal mix of the four pools.
+        Takes about 6 minutes. Options: --steps, --batch-size, --micro-batch, --lr, --warmup
+        (see --help).
+
+    python3 code/create_submission.py runs/short
+        Checks the model, scores it on the dev set and writes runs/short/submission.log.
+
+Each placeholder writes an output directory with its weights, model_def.py and train.log.
+
+
+YOUR OWN SOLUTION
+
+Your training script writes an output directory containing:
+
+    model_def.py   defines load_model(directory, device), which returns a torch.nn.Module that maps
+                   token ids [batch, length] (int64) to logits [batch, length, 50257]
+    your weights   in any format
+    train.log      your training log, in any format
+
+Any architecture is allowed. Put its class in model_def.py, or in files next to it, so that
+load_model can rebuild the model. The two placeholders show both cases:
+
+    solutions/gpt_model_def.py           the provided architecture: load_model is one line
+    solutions/extra_layer_model_def.py   a changed architecture: the class, plus load_model
+
+A good way to start is to copy solutions/short_training.py and change what you need. It is split into
+labeled sections: settings, model and weight loading, data, optimizer, train loop, saving.
+
+Two things to keep from the starter code when you work with the provided models:
+  - save in the provided format with gpt.save or gpt.write_checkpoint, which keep the models' muP
+    settings (a checkpoint saved without them scores about 9);
+  - train with gpt.optimizer_groups, which sets the per-group learning rates these models need.
+
+
+SUBMITTING
+
+    python3 code/create_submission.py <output directory>
+
+Then upload <output directory>/submission.log, your train.log and your code to Gradescope, as the
+project document describes.
