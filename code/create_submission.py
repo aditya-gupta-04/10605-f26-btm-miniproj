@@ -62,7 +62,7 @@ def count_parameters(model):
 @torch.no_grad()
 def active_parameters(model, window, device):
     """Weights used per token: matrix-multiply FLOPs per token / 2 (attention scores are not matmul ops here)."""
-    with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"), FlopCounterMode(display=False) as counter:
+    with torch.autocast(device, dtype=torch.bfloat16), FlopCounterMode(display=False) as counter:
         logits_of(model, window[None])
     flops = counter.get_flop_counts()["Global"]
     return sum(n for op, n in flops.items() if str(op) in ("aten.mm", "aten.addmm")) / 2 / window.numel()
@@ -91,7 +91,7 @@ def file_loss(model, tokens, batch, device):
         b = min(batch, n - start)
         chunk = tokens[start * T:(start + b) * T + 1]
         x, y = chunk[:-1].view(b, T), chunk[1:].view(b, T)
-        with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"):
+        with torch.autocast(device, dtype=torch.bfloat16):
             logits = logits_of(model, x)
         total += F.cross_entropy(logits[..., :VOCAB].float().reshape(-1, VOCAB), y.reshape(-1), reduction="sum").item()
     return total / (n * T)
@@ -104,7 +104,9 @@ def main():
                         help="directory of <domain>.bin files to score on (default: the dev set)")
     parser.add_argument("--batch", type=int, default=4, help="windows per forward pass")
     args = parser.parse_args()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not torch.cuda.is_available():
+        raise SystemExit("PyTorch sees no GPU: check nvidia-smi, and install torch==2.10.0 as in the README")
+    device = "cuda"
     name = os.path.basename(os.path.abspath(args.data))
     lines = []
 
@@ -121,10 +123,10 @@ def main():
     is_causal = causal(model, window)
     valid = parameters <= MAX_PARAMETERS and is_causal
 
-    gpu = torch.cuda.get_device_name(0) if device == "cuda" else "cpu"
+    gpu = torch.cuda.get_device_name(0)
     log(f"submission  {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())} | {args.directory} | {gpu} | torch {torch.__version__}")
     log(f"parameters  {parameters:,} (limit {MAX_PARAMETERS:,})")
-    log(f"active      about {active / 1e6:.1f}M parameters per token (matrix-multiply FLOPs / 2; limit 150M, checked by staff)")
+    log(f"active      about {active / 1e6:.1f}M parameters per token (matrix-multiply FLOPs / 2; limit 150M)")
     log(f"causal      {'yes' if is_causal else 'NO: later tokens change earlier predictions'}")
     losses = {d: file_loss(model, data.read_tokens(os.path.join(args.data, f"{d}.bin")), args.batch, device) for d in DOMAINS}
     mean = sum(losses.values()) / len(losses)

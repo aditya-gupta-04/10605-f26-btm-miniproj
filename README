@@ -35,13 +35,15 @@ Changing only a random seed, a learning rate or the training length does not mak
 
 SETUP (AWS g5.xlarge, one A10G GPU)
 
-    pip install torch numpy huggingface_hub
+    pip install --no-cache-dir torch==2.10.0 numpy huggingface_hub
+    python3 -c "import torch; print(torch.cuda.is_available())"   # must print True
     git clone https://github.com/aditya-gupta-04/10605-f26-btm-miniproj.git
     cd 10605-f26-btm-miniproj
     python3 code/download_data.py
 
-download_data.py fetches models/ and pool/ from Hugging Face (about 2 GB) and checks every file
-against MANIFEST.sha256. Run long jobs inside tmux so they survive an SSH disconnect.
+Keep torch at 2.10.0: newer builds need a newer NVIDIA driver than the g5 images have, and PyTorch then
+cannot see the GPU. download_data.py fetches models/ and pool/ from Hugging Face (about 2 GB) and
+checks every file against MANIFEST.sha256. Run long jobs inside tmux so they survive an SSH disconnect.
 
     models/seed.bin, models/generalist.bin, models/expert_<domain>.bin   the six provided models
     pool/<domain>.bin            training data: 60M tokens per domain, never seen by the experts

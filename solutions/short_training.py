@@ -49,6 +49,9 @@ def main():
     # ---- 1. Settings ---------------------------------------------------------------------------------
     args = parse_args()
     assert args.batch_size % args.micro_batch == 0, "--batch-size must be a multiple of --micro-batch"
+    if not torch.cuda.is_available():
+        raise SystemExit("PyTorch sees no GPU: check nvidia-smi, and install torch==2.10.0 as in the README")
+    device = "cuda"
     os.makedirs(args.out, exist_ok=True)
     log_file = open(os.path.join(args.out, "train.log"), "w")
 
@@ -59,7 +62,6 @@ def main():
 
     log(f"settings: {vars(args)}")
     torch.manual_seed(args.seed)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ---- 2. Model: the new architecture, with the provided generalist's weights loaded into it --------
     generalist = gpt.load(os.path.join(ROOT, "models", "generalist.bin"))
@@ -86,7 +88,7 @@ def main():
 
     # ---- 4. Optimizer: AdamW with the muP groups, linear warmup then linear decay to zero --------------
     optimizer = torch.optim.AdamW(gpt.optimizer_groups(model, args.weight_decay), lr=args.lr, betas=(0.9, 0.95),
-                                  eps=1e-8, fused=device == "cuda")
+                                  eps=1e-8, fused=True)
 
     def lr_at(step):
         if step < args.warmup:
@@ -102,7 +104,7 @@ def main():
         step_loss = 0.0
         for _ in range(accum):
             x, y = get_batch(args.micro_batch)
-            with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"):
+            with torch.autocast(device, dtype=torch.bfloat16):
                 logits = model(x)
             loss = F.cross_entropy(logits.float().view(-1, logits.size(-1)), y.reshape(-1))
             (loss / accum).backward()
