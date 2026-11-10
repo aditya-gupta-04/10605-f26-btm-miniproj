@@ -1,0 +1,5 @@
+models/
+pool/
+runs/
+__pycache__/
+submission.zip
